@@ -25,7 +25,6 @@ public final class TabuWorkerServer {
                 int port = Integer.parseInt(arg);
                 Server server = ServerBuilder
                         .forPort(port)
-                        .directExecutor()
                         .addService(new TabuWorkerImpl())
                         .build()
                         .start();

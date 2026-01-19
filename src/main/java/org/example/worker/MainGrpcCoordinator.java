@@ -29,7 +29,6 @@ public final class MainGrpcCoordinator {
     }
 
     static void woodsX0(int dim, double[] x0) {
-        // x(0) = (-3, -1, -3, -1, ..., -3, -1, -3, -1)
         for (int i = 0; i < dim; i++) x0[i] = (i % 2 == 0) ? -3.0 : -1.0;
     }
 
@@ -48,7 +47,6 @@ public final class MainGrpcCoordinator {
         return x;
     }
 
-    // Same chunking formula
     static int[] chunkForRank(int rank, int T) {
         int base = N / T;
         int rem  = N % T;
@@ -58,9 +56,6 @@ public final class MainGrpcCoordinator {
         return new int[]{chunkStart, chunkEnd};
     }
 
-    // ============================================================
-    // Worker stream client wrapper (new proto)
-    // ============================================================
     static final class WorkerClient {
         final int rank;
         final int chunkStart;
@@ -69,7 +64,6 @@ public final class MainGrpcCoordinator {
         final ManagedChannel channel;
         final StreamObserver<WorkerMessage> requestStream;
 
-        // responses (Ack or IterationResponse) come back asynchronously
         final BlockingQueue<WorkerResponse> responses = new LinkedBlockingQueue<>();
 
         WorkerClient(int rank, String host, int port, int chunkStart, int chunkEnd) {
@@ -78,7 +72,6 @@ public final class MainGrpcCoordinator {
             this.chunkEnd = chunkEnd;
 
             this.channel = ManagedChannelBuilder.forAddress(host, port)
-                    .directExecutor()
                     .usePlaintext()
                     .build();
 
@@ -275,17 +268,37 @@ public final class MainGrpcCoordinator {
                 effectiveStep = step * 0.1;
             }
 
-            // ---- Fork: send Iteration to all workers (tiny) ----
+            // ---- Fork: send Iteration to all workers IN PARALLEL ----
+            final double stepToSend = effectiveStep;
+            final int prevIdx = prevChosenIndex;
+            final int prevDir = prevChosenDir;
+            final double prevNewVal = prevChosenNewVal;
+            final double fBestToSend = fBest;
+            final int iter = k;
+
+            CountDownLatch sendLatch = new CountDownLatch(workers.size());
             for (WorkerClient w : workers) {
-                w.sendIteration(
-                        k,
-                        effectiveStep,
-                        prevChosenIndex,
-                        prevChosenDir,
-                        prevChosenNewVal,
-                        fBest,
-                        maxCandidatesPerWorker
-                );
+                responseExecutor.execute(() -> {
+                    try {
+                        w.sendIteration(
+                                iter,
+                                stepToSend,
+                                prevIdx,
+                                prevDir,
+                                prevNewVal,
+                                fBestToSend,
+                                maxCandidatesPerWorker
+                        );
+                    } finally {
+                        sendLatch.countDown();
+                    }
+                });
+            }
+            try {
+                sendLatch.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Interrupted during send", e);
             }
 
             // ---- Join: collect worker responses IN PARALLEL ----
@@ -397,7 +410,7 @@ public final class MainGrpcCoordinator {
         // Which objective function to use
         final ObjectiveFunction USE_OBJECTIVE = ObjectiveFunction.WOODS;
 
-        final int numWorkers = 3;          // must match number of worker servers
+        final int numWorkers = 4;          // must match number of worker servers
         final int maxIter = 2_000_000;     // more iterations for larger N
         final int tabuTenure = 13;         // ~sqrt(N), classic heuristic
 
