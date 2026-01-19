@@ -15,7 +15,6 @@ public final class MainGrpcCoordinator {
     static final int N = 200;
     static final double EPSILON = 1e-10;
 
-    // ===== Helpers (unchanged) =====
     static double diffInfNorm(double[] a, double[] b, int n) {
         double m = 0.0;
         for (int i = 0; i < n; i++) {
@@ -27,6 +26,11 @@ public final class MainGrpcCoordinator {
 
     static void rosenbrockX0Th(int dim, double[] x0) {
         for (int i = 0; i < dim; i++) x0[i] = (i % 2 == 0) ? -1.2 : 1.0;
+    }
+
+    static void woodsX0(int dim, double[] x0) {
+        // x(0) = (-3, -1, -3, -1, ..., -3, -1, -3, -1)
+        for (int i = 0; i < dim; i++) x0[i] = (i % 2 == 0) ? -3.0 : -1.0;
     }
 
     static double norm2_diff(double[] x, double[] y, int n) {
@@ -98,13 +102,14 @@ public final class MainGrpcCoordinator {
             });
         }
 
-        void sendInit(double[] solution0, double[] lower, double[] upper, int tabuTenure) {
+        void sendInit(double[] solution0, double[] lower, double[] upper, int tabuTenure, ObjectiveFunction objective) {
             Init.Builder ib = Init.newBuilder()
                     .setRank(rank)
                     .setN(solution0.length)
                     .setChunkStart(chunkStart)
                     .setChunkEnd(chunkEnd)
-                    .setTabuTenure(tabuTenure);
+                    .setTabuTenure(tabuTenure)
+                    .setObjective(objective);
 
             for (double v : solution0) ib.addSolution0(v);
             for (double v : lower) ib.addLower(v);
@@ -206,7 +211,8 @@ public final class MainGrpcCoordinator {
             double[] initial_x,
             int maxIter,
             double step,
-            int maxCandidatesPerWorker
+            int maxCandidatesPerWorker,
+            ObjectiveFunction objective
     ) {
         System.out.println("==========================");
         System.out.println("Dimension = " + N);
@@ -214,6 +220,7 @@ public final class MainGrpcCoordinator {
         System.out.println("Step = " + step);
         System.out.println("Tab tenure = " + tabuTenure);
         System.out.println("Workers = " + workers.size());
+        System.out.println("Objective = " + objective);
         System.out.println("==========================");
 
         // Dedicated executor for blocking I/O (better than ForkJoinPool for this use case)
@@ -239,7 +246,7 @@ public final class MainGrpcCoordinator {
 
         // ---- INIT streams (send once) ----
         for (WorkerClient w : workers) {
-            w.sendInit(s, lower, upper, tabuTenure);
+            w.sendInit(s, lower, upper, tabuTenure, objective);
         }
 
         // previous chosen move (to broadcast next iter)
@@ -387,10 +394,12 @@ public final class MainGrpcCoordinator {
     // ============================================================
     public static void main(String[] args) {
 
-        final int numWorkers = 1;          // must match number of worker servers
+        // Which objective function to use
+        final ObjectiveFunction USE_OBJECTIVE = ObjectiveFunction.WOODS;
+
+        final int numWorkers = 3;          // must match number of worker servers
         final int maxIter = 2_000_000;     // more iterations for larger N
-        final int tabuTenure = 13;         // ~sqrt(500), classic heuristic
-        final double stepRosen = 1e-3;     // larger step for faster initial convergence
+        final int tabuTenure = 13;         // ~sqrt(N), classic heuristic
 
         // With the new design, you can set this SMALL (1..3).
         // 3 gives better exploration for larger problems.
@@ -400,13 +409,23 @@ public final class MainGrpcCoordinator {
 
         double[] lower = new double[N];
         double[] upper = new double[N];
+        double[] initialX = new double[N];
+        double step;
 
-        System.out.println("\nRosenbrock start");
-        Arrays.fill(lower, -2.0);
-        Arrays.fill(upper,  2.0);
-
-        double[] initialRosen = new double[N];
-        rosenbrockX0Th(N, initialRosen);
+        if (USE_OBJECTIVE == ObjectiveFunction.ROSENBROCK) {
+            System.out.println("\nRosenbrock start");
+            Arrays.fill(lower, -2.0);
+            Arrays.fill(upper,  2.0);
+            rosenbrockX0Th(N, initialX);
+            step = 1e-3;
+        } else {
+            // WOODS
+            System.out.println("\nWoods start");
+            Arrays.fill(lower, -10.0);
+            Arrays.fill(upper,  10.0);
+            woodsX0(N, initialX);
+            step = 1e-3;
+        }
 
         List<WorkerClient> workers = new ArrayList<>();
         for (int rank = 0; rank < numWorkers; rank++) {
@@ -421,10 +440,11 @@ public final class MainGrpcCoordinator {
                     tabuTenure,
                     lower,
                     upper,
-                    initialRosen,
+                    initialX,
                     maxIter,
-                    stepRosen,
-                    maxCandidatesPerWorker
+                    step,
+                    maxCandidatesPerWorker,
+                    USE_OBJECTIVE
             );
         } finally {
             for (WorkerClient w : workers) w.close();

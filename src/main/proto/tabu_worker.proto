@@ -20,6 +20,11 @@ message WorkerMessage {
   }
 }
 
+enum ObjectiveFunction {
+  ROSENBROCK = 0;
+  WOODS = 1;
+}
+
 message Init {
   int32 rank = 1;
   int32 n = 2;
@@ -36,8 +41,8 @@ message Init {
   // Tabu parameters (sent once)
   int32 tabu_tenure = 8;
 
-  // Objective selector if you want (optional)
-  // int32 objective_id = 9;
+  // Objective selector
+  ObjectiveFunction objective = 9;
 }
 
 message Iteration {

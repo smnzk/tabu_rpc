@@ -17,6 +17,7 @@ public final class TabuWorkerImpl extends TabuWorkerGrpc.TabuWorkerImplBase {
             int N;
             int chunkStart, chunkEnd;
             int tabuTenure;
+            ObjectiveFunction objective;
 
             double[] s;
             double[] lower;
@@ -65,6 +66,7 @@ public final class TabuWorkerImpl extends TabuWorkerGrpc.TabuWorkerImplBase {
                 this.chunkStart = init.getChunkStart();
                 this.chunkEnd = init.getChunkEnd();
                 this.tabuTenure = init.getTabuTenure();
+                this.objective = init.getObjective();
 
                 s = new double[N];
                 lower = new double[N];
@@ -146,7 +148,7 @@ public final class TabuWorkerImpl extends TabuWorkerGrpc.TabuWorkerImplBase {
                                 : (k < tabuExpirePlus[i]);
 
                         s[i] = newVal;
-                        double fc = ObjectiveFunctions.evaluate(s);
+                        double fc = ObjectiveFunctions.evaluate(s, objective);
                         s[i] = oldVal;
 
                         boolean aspiration = fc < fBest;
@@ -254,9 +256,12 @@ public final class TabuWorkerImpl extends TabuWorkerGrpc.TabuWorkerImplBase {
 
 final class ObjectiveFunctions {
 
-    static double evaluate(double[] x) {
-        return extendedRosenbrock(x);
-        // or woodsFunction(x)
+    static double evaluate(double[] x, ObjectiveFunction objective) {
+        return switch (objective) {
+            case ROSENBROCK -> extendedRosenbrock(x);
+            case WOODS -> woodsFunction(x, x.length);
+            default -> extendedRosenbrock(x);
+        };
     }
 
     static double extendedRosenbrock(double[] x) {
