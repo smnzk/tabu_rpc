@@ -47,17 +47,3 @@ protobuf {
         }
     }
 }
-
-// Default `./gradlew run` will start the server
-application {
-    mainClass.set("org.example.tabu.TabuServer")
-}
-
-// Convenience task to run the client:
-// ./gradlew runClient --args="localhost 50051 50 200 123"
-tasks.register<JavaExec>("runClient") {
-    group = "application"
-    description = "Run the gRPC client"
-    classpath = sourceSets["main"].runtimeClasspath
-    mainClass.set("org.example.tabu.TabuClient")
-}
