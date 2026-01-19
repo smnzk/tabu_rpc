@@ -12,8 +12,10 @@ public final class TabuWorkerServer {
 
     public static void main(String[] args) throws Exception {
 
+        // Pass ports 50051, 50052, 50053 etc... to server args[] to run servers
+
         if (args.length < 1) {
-            System.err.println("Usage: TabuWorkerServer <port> [<port> ...]");
+            System.err.println("Provide ports via args to start");
             System.exit(1);
         }
 
@@ -53,14 +55,11 @@ public final class TabuWorkerServer {
             for (Server s : servers) {
                 try {
                     s.shutdown();
-                } catch (Exception ex) {
-                    // best-effort shutdown
+                } catch (Exception _) {
                 }
             }
             latch.countDown();
         }));
-
-        // wait until shutdown hook fires
         latch.await();
     }
 }

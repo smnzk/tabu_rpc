@@ -34,8 +34,6 @@ public final class TabuWorkerImpl extends TabuWorkerGrpc.TabuWorkerImplBase {
             double[] topNewVal;
             double[] topF;
 
-            // ======================================================
-
             @Override
             public void onNext(WorkerMessage msg) {
 
@@ -48,17 +46,12 @@ public final class TabuWorkerImpl extends TabuWorkerGrpc.TabuWorkerImplBase {
                     throw new IllegalStateException("Iteration before Init");
                 }
 
-                if (msg.hasResync()) {
-                    handleResync(msg.getResync());
-                    return;
-                }
 
                 if (msg.hasIter()) {
                     handleIteration(msg.getIter());
                 }
             }
 
-            // ================= INIT =================
             private void handleInit(Init init) {
 
                 this.rank = init.getRank();
@@ -92,14 +85,6 @@ public final class TabuWorkerImpl extends TabuWorkerGrpc.TabuWorkerImplBase {
                 );
             }
 
-            // ================= RESYNC =================
-            private void handleResync(Resync r) {
-                for (int i = 0; i < N; i++) {
-                    s[i] = r.getSolution(i);
-                }
-            }
-
-            // ================= ITERATION =================
             private void handleIteration(Iteration it) {
 
                 final int k = it.getIteration();
@@ -109,7 +94,6 @@ public final class TabuWorkerImpl extends TabuWorkerGrpc.TabuWorkerImplBase {
 
                 ensureTopCapacity(K);
 
-                // ---- apply coordinator move ----
                 if (k > 1) {
                     int idx = it.getChosenIndex();
                     if (idx >= 0) {
@@ -130,7 +114,6 @@ public final class TabuWorkerImpl extends TabuWorkerGrpc.TabuWorkerImplBase {
                 int worstPos = -1;
                 double worstF = Double.NEGATIVE_INFINITY;
 
-                // ---- evaluate my chunk ----
                 for (int i = chunkStart; i < chunkEnd; i++) {
 
                     double oldVal = s[i];
@@ -207,8 +190,6 @@ public final class TabuWorkerImpl extends TabuWorkerGrpc.TabuWorkerImplBase {
                                 .build()
                 );
             }
-
-            // ================= HELPERS =================
 
             private void ensureTopCapacity(int k) {
                 if (topF == null || topF.length < k) {

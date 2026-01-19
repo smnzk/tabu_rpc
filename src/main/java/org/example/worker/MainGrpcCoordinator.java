@@ -138,20 +138,7 @@ public final class MainGrpcCoordinator {
             );
         }
 
-        void sendResync(int iteration, double[] solution, double fBest) {
-            Resync.Builder rb = Resync.newBuilder()
-                    .setIteration(iteration)
-                    .setFBest(fBest);
 
-            for (double v : solution) rb.addSolution(v);
-
-            requestStream.onNext(
-                    WorkerMessage.newBuilder().setResync(rb.build()).build()
-            );
-        }
-
-        // Wait until we receive IterationResponse for expected iteration.
-        // (Acks can arrive too; we ignore them here.)
         IterationResponse awaitIterResponse(int expectedIteration, long timeoutMs) {
             long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
 
@@ -171,8 +158,6 @@ public final class MainGrpcCoordinator {
                 if (r == null) continue;
 
                 if (r.hasAck()) {
-                    // optional: print once
-                    // System.out.println("Worker " + rank + " ACK: " + r.getAck().getMsg());
                     continue;
                 }
                 if (!r.hasIterResp()) continue;
@@ -193,9 +178,6 @@ public final class MainGrpcCoordinator {
         }
     }
 
-    // ============================================================
-    // Coordinator-side tabu search using new protocol
-    // ============================================================
     static void tabuSearchGrpc(
             List<WorkerClient> workers,
             int tabuTenure,
@@ -216,59 +198,38 @@ public final class MainGrpcCoordinator {
         System.out.println("Objective = " + objective);
         System.out.println("==========================");
 
-        // Dedicated executor for blocking I/O (better than ForkJoinPool for this use case)
         ExecutorService responseExecutor = Executors.newFixedThreadPool(workers.size());
 
-        // Shared state
         double[] s = new double[N];
         double[] best = new double[N];
         double[] prevBest = new double[N];
 
-        int[] tabuExpireMinus = new int[N];
-        int[] tabuExpirePlus  = new int[N];
-
         System.arraycopy(initial_x, 0, s, 0, N);
-        // best[] defaults to 0; keep same behavior
         System.arraycopy(best, 0, prevBest, 0, N);
 
         double fBest = Double.POSITIVE_INFINITY;
         double fs = Double.POSITIVE_INFINITY;
 
         int stagnation = 0;
-        final int patience = 8000;  // increased for N=500
+        final int patience = 8000;
 
-        // ---- INIT streams (send once) ----
         for (WorkerClient w : workers) {
             w.sendInit(s, lower, upper, tabuTenure, objective);
         }
 
-        // previous chosen move (to broadcast next iter)
         int prevChosenIndex = -1;
         int prevChosenDir = 0;
         double prevChosenNewVal = 0.0;
-
-        // Optional safety resync (off by default)
-        final int RESYNC_EVERY = 0; // e.g. 50_000; 0 disables
 
         long start = System.nanoTime();
 
         for (int k = 1; k <= maxIter; k++) {
 
-            // ---- optionally resync full state sometimes ----
-            if (RESYNC_EVERY > 0 && k % RESYNC_EVERY == 0) {
-                for (WorkerClient w : workers) {
-                    w.sendResync(k, s, fBest);
-                }
-                // after resync, we still send Iteration as normal
-            }
-
-//// ---- Adaptive step near optimum ----
             double effectiveStep = step;
             if (fBest < 10) {
                 effectiveStep = step * 0.1;
             }
 
-            // ---- Fork: send Iteration to all workers IN PARALLEL ----
             final double stepToSend = effectiveStep;
             final int prevIdx = prevChosenIndex;
             final int prevDir = prevChosenDir;
@@ -301,7 +262,6 @@ public final class MainGrpcCoordinator {
                 throw new RuntimeException("Interrupted during send", e);
             }
 
-            // ---- Join: collect worker responses IN PARALLEL ----
             final int iteration = k;
             List<CompletableFuture<IterationResponse>> futures = new ArrayList<>(workers.size());
             for (WorkerClient w : workers) {
@@ -322,8 +282,6 @@ public final class MainGrpcCoordinator {
                 throw new RuntimeException("Failed to collect worker responses", e);
             }
 
-            // ---- Reduce: choose best move globally ----
-            // Workers already filtered tabu moves (except aspiration), so just find min
             CandidateMove bestMove = null;
             double bestF = Double.POSITIVE_INFINITY;
 
@@ -337,7 +295,6 @@ public final class MainGrpcCoordinator {
                 }
             }
 
-            // ---- Apply: update global state ----
             if (bestMove != null) {
                 int moveVar = bestMove.getIndex();
                 int dir = bestMove.getDirection();
@@ -350,25 +307,15 @@ public final class MainGrpcCoordinator {
                     System.arraycopy(s, 0, best, 0, N);
                 }
 
-                // Tabu update EXACTLY like your original coordinator code
-                if (dir == -1) {
-                    tabuExpirePlus[moveVar] = k + tabuTenure;
-                } else {
-                    tabuExpireMinus[moveVar] = k + tabuTenure;
-                }
-
-                // remember chosen move to broadcast next iter
                 prevChosenIndex = moveVar;
                 prevChosenDir = dir;
                 prevChosenNewVal = bestMove.getNewValue();
             } else {
-                // no admissible move found; still must send something next iteration
                 prevChosenIndex = -1;
                 prevChosenDir = 0;
                 prevChosenNewVal = 0.0;
             }
 
-            // ---- Stagnation (unchanged) ----
             double d = diffInfNorm(best, prevBest, N);
             if (d < EPSILON) stagnation++;
             else {
@@ -398,24 +345,17 @@ public final class MainGrpcCoordinator {
         double resid = norm2_diff(best, x_star, N);
         System.out.printf("residuum ||x - x*||_2 = %.6e%n", resid);
 
-        // Shutdown executor
         responseExecutor.shutdown();
     }
 
-    // ============================================================
-    // main
-    // ============================================================
     public static void main(String[] args) {
 
-        // Which objective function to use
-        final ObjectiveFunction USE_OBJECTIVE = ObjectiveFunction.WOODS;
+        final ObjectiveFunction USE_OBJECTIVE = ObjectiveFunction.ROSENBROCK;
 
-        final int numWorkers = 4;          // must match number of worker servers
-        final int maxIter = 2_000_000;     // more iterations for larger N
-        final int tabuTenure = 13;         // ~sqrt(N), classic heuristic
+        final int numWorkers = 4;
+        final int maxIter = 2_000_000;
+        final int tabuTenure = 12;
 
-        // With the new design, you can set this SMALL (1..3).
-        // 3 gives better exploration for larger problems.
         final int maxCandidatesPerWorker = 3;
 
         System.out.println("Running in gRPC worker mode with " + numWorkers + " workers");
@@ -432,7 +372,6 @@ public final class MainGrpcCoordinator {
             rosenbrockX0Th(N, initialX);
             step = 1e-3;
         } else {
-            // WOODS
             System.out.println("\nWoods start");
             Arrays.fill(lower, -10.0);
             Arrays.fill(upper,  10.0);
