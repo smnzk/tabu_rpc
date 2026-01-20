@@ -13,6 +13,8 @@ To polecenie zbuduje projekt i wygeneruje wszystkie wymagane klasy gRPC z pliku 
 
 ## Uruchamianie serwerów worker
 
+Najwygodniej uruchomić przez IDE (np. IntelliJ) natomiast można też użyć Gradle.
+
 ```bash
 # Dla jednego serwera:
 ./gradlew run --args="50051"
