@@ -19,8 +19,9 @@ Najwygodniej uruchomić przez IDE (np. IntelliJ) natomiast można też użyć Gr
 # Dla jednego serwera:
 ./gradlew run --args="50051"
 # Lub kilka na raz:
-./gradlew run --args="50051 50052 50053"
+./gradlew run --args="50051 50052 50053 50054"
 ```
+WAŻNE: numWorkers w Coordinatorze nie może być większe niż liczba uruchomionych serwerów worker.
 
 ### 2. Uruchomienie koordynatora
 Po uruchomieniu serwerów worker, należy uruchomić Coordinator:
