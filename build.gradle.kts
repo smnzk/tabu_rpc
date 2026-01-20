@@ -47,3 +47,7 @@ protobuf {
         }
     }
 }
+
+application {
+    mainClass.set("org.example.worker.TabuWorkerServer")
+}
