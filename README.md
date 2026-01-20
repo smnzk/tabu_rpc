@@ -11,7 +11,7 @@ Aby wygenerować klasy Java z plików `.proto`:
 
 To polecenie zbuduje projekt i wygeneruje wszystkie wymagane klasy gRPC z pliku `tabu_worker.proto`.
 
-## Uruchamianie projektu
+## Uruchamianie serwerów worker
 
 ```bash
 # Dla jednego serwera:
@@ -21,9 +21,13 @@ To polecenie zbuduje projekt i wygeneruje wszystkie wymagane klasy gRPC z pliku 
 ```
 
 ### 2. Uruchomienie koordynatora
-Po uruchomieniu serwerów worker, należy uruchomić Coordinator. Zmienne w kodzie coordinatora zmieniają parametry wejściowe (głównie N, maxIterations, step).
+Po uruchomieniu serwerów worker, należy uruchomić Coordinator:
 
-**Uwaga:** Jeśli masz osobną klasę Coordinator, uruchom ją podobnie używając Gradle lub stwórz osobny task w build.gradle.kts.
+```bash
+./gradlew runCoordinator
+```
+
+Zmienne w kodzie koordynatora zmieniają parametry wejściowe (głównie N, maxIterations, step).
 
 ## Uwagi dotyczące testów
 

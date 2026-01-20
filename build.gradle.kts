@@ -51,3 +51,11 @@ protobuf {
 application {
     mainClass.set("org.example.worker.TabuWorkerServer")
 }
+
+tasks.register<JavaExec>("runCoordinator") {
+    group = "application"
+    description = "Uruchamia koordynatora Tabu Search"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("org.example.worker.MainGrpcCoordinator")
+}
+
